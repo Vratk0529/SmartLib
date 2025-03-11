@@ -17,11 +17,13 @@ class SmartLib {
     void toggleAct();
 
     void setMQTTCallback(MQTT_CALLBACK_SIGNATURE);
-    
+
     void sendToMQTTStr(const char *topic, const char *payload);
     void sendToMQTT(const char *topic, const char *fmt, ...);
 
     void loop();
+
+    char * getRxTopic(const char * topic);
 
     private:
     void setStringSafe(char* var, size_t size, const char* to);

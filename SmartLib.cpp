@@ -121,6 +121,17 @@ void SmartLib::loop()
     maintainConnection();
 }
 
+char * SmartLib::getRxTopic(const char * topic)
+{
+    if (snprintf(_topic, sizeof(_topic), "%s/RX/%s", _deviceName, topic) >= sizeof(_topic))
+    {
+        ESP_LOGE("SNPRINTG", "TOO LONG");
+        return nullptr;
+    }
+
+    return _topic;
+}
+
 void SmartLib::setStringSafe(char *var, size_t size, const char *to)
 {
     strncpy(var, to, size - 1);
