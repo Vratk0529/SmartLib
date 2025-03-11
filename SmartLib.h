@@ -8,7 +8,7 @@
 class SmartLib {
     public:
     SmartLib(const char *deviceName, const char* SSID, const char* PASS, const char* MQTT_SRV, \
-         const char* MQTT_NAME, const char* MQTT_PASS, uint8_t ACT_LED = -1, bool ACT_HIGH = true);
+         const char* MQTT_NAME, const char* MQTT_PASS, int8_t ACT_LED = -1, bool ACT_HIGH = true);
 
     void maintainConnection();
     bool getStatus();
@@ -35,9 +35,10 @@ class SmartLib {
 
     char _SSID[64], _PASS[64], _MQTT_NAME[64], _MQTT_PASS[64];
     char _deviceName[64];
-    uint8_t _ACT_LED;
+    int8_t _ACT_LED = -1;
     bool _ACT_HIGH;
     char _topic[128];
+    uint8_t _reconnectionTries = 0;
 };
 
 #endif

@@ -1,14 +1,13 @@
 #include "SmartLib.h"
 
 #include "esp_log.h"
-#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
 
 #include <stdarg.h>
 
 WiFiClient SmartLib::_mqttClient;
 
 SmartLib::SmartLib(const char *deviceName, const char *SSID, const char *PASS, const char *MQTT_SRV,
-                   const char *MQTT_NAME, const char *MQTT_PASS, uint8_t ACT_LED, bool ACT_HIGH)
+                   const char *MQTT_NAME, const char *MQTT_PASS, int8_t ACT_LED, bool ACT_HIGH)
     : client(_mqttClient)
 {
     setStringSafe(_deviceName, sizeof(_deviceName), deviceName);
@@ -17,10 +16,13 @@ SmartLib::SmartLib(const char *deviceName, const char *SSID, const char *PASS, c
     setStringSafe(_MQTT_NAME, sizeof(_MQTT_NAME), MQTT_NAME);
     setStringSafe(_MQTT_PASS, sizeof(_MQTT_PASS), MQTT_PASS);
 
-    pinMode(ACT_LED, OUTPUT);
-    digitalWrite(ACT_LED, !ACT_HIGH);
-    _ACT_LED = ACT_LED;
-    _ACT_HIGH = ACT_HIGH;
+    if (ACT_LED != -1)
+    {
+        pinMode(ACT_LED, OUTPUT);
+        digitalWrite(ACT_LED, !ACT_HIGH);
+        _ACT_LED = ACT_LED;
+        _ACT_HIGH = ACT_HIGH;
+    }
 
     client.setServer(MQTT_SRV, 1883);
 }
@@ -30,13 +32,28 @@ void SmartLib::maintainConnection()
     if (WiFi.status() != WL_CONNECTED)
     {
         WiFi.begin(_SSID, _PASS);
+        uint8_t reconnectionTries = 0;
         while (!WiFi.isConnected())
         {
             ESP_LOGD("WiFi", "Connecting");
             toggleAct();
             delay(500);
+            reconnectionTries++;
+            if (reconnectionTries > 20)
+            {
+                WiFi.disconnect(true, false);
+                ESP_LOGD("WiFi", "Disconnected");
+                _reconnectionTries++;
+                if (_reconnectionTries > 2)
+                    esp_deep_sleep(1000000);
+                delay(1000);
+                maintainConnection();
+                return;
+            }
         }
         setAct(false);
+        ESP_LOGD("WiFi", "Connected");
+        _reconnectionTries = 0;
     }
     if (!client.connected())
     {
@@ -56,6 +73,7 @@ void SmartLib::maintainConnection()
         }
         if (client.connected())
         {
+            ESP_LOGD("MQTT", "Connected");
             if (snprintf(_topic, sizeof(_topic), "%s/RX/#", _deviceName) >= sizeof(_topic))
             {
                 ESP_LOGE("SNPRINTG", "TOO LONG");
@@ -73,13 +91,19 @@ bool SmartLib::getStatus()
 
 void SmartLib::setAct(bool state)
 {
-    actStatus = !state != !_ACT_HIGH; // XOR these two
-    digitalWrite(_ACT_LED, actStatus);
+    if (_ACT_LED != -1)
+    {
+        actStatus = !state != !_ACT_HIGH; // XOR these two
+        digitalWrite(_ACT_LED, actStatus);
+    }
 }
 void SmartLib::toggleAct()
 {
-    actStatus = !actStatus;
-    digitalWrite(_ACT_LED, actStatus);
+    if (_ACT_LED != -1)
+    {
+        actStatus = !actStatus;
+        digitalWrite(_ACT_LED, actStatus);
+    }
 }
 
 void SmartLib::setMQTTCallback(MQTT_CALLBACK_SIGNATURE)
@@ -121,7 +145,7 @@ void SmartLib::loop()
     maintainConnection();
 }
 
-char * SmartLib::getRxTopic(const char * topic)
+char *SmartLib::getRxTopic(const char *topic)
 {
     if (snprintf(_topic, sizeof(_topic), "%s/RX/%s", _deviceName, topic) >= sizeof(_topic))
     {
