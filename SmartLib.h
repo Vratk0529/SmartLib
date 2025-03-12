@@ -37,7 +37,6 @@ class SmartLib {
     char _deviceName[64];
     int8_t _ACT_LED = -1;
     bool _ACT_HIGH;
-    char _topic[128];
     uint8_t _reconnectionTries = 0;
 };
 

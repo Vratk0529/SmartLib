@@ -31,6 +31,7 @@ void SmartLib::maintainConnection()
 {
     if (WiFi.status() != WL_CONNECTED)
     {
+        setAct(false);
         WiFi.begin(_SSID, _PASS);
         uint8_t reconnectionTries = 0;
         while (!WiFi.isConnected())
@@ -39,12 +40,12 @@ void SmartLib::maintainConnection()
             toggleAct();
             delay(500);
             reconnectionTries++;
-            if (reconnectionTries > 20)
+            if (reconnectionTries >= 20)
             {
                 WiFi.disconnect(true, false);
                 ESP_LOGD("WiFi", "Disconnected");
                 _reconnectionTries++;
-                if (_reconnectionTries > 2)
+                if (_reconnectionTries >= 2)
                     esp_deep_sleep(1000000);
                 delay(1000);
                 maintainConnection();
@@ -57,6 +58,7 @@ void SmartLib::maintainConnection()
     }
     if (!client.connected())
     {
+        setAct(true);
         String client_id = "esp32-client-";
         client_id += String(WiFi.macAddress());
         ESP_LOGD("MQTT", "Connecting");
@@ -73,15 +75,18 @@ void SmartLib::maintainConnection()
         }
         if (client.connected())
         {
+            char _topic[128];
             ESP_LOGD("MQTT", "Connected");
             if (snprintf(_topic, sizeof(_topic), "%s/RX/#", _deviceName) >= sizeof(_topic))
             {
-                ESP_LOGE("SNPRINTG", "TOO LONG");
+                ESP_LOGE("SNPRINTF", "_topic too long");
+                setAct(false);
                 return;
             }
 
             client.subscribe(_topic);
         }
+        setAct(false);
     }
 }
 bool SmartLib::getStatus()
@@ -113,9 +118,10 @@ void SmartLib::setMQTTCallback(MQTT_CALLBACK_SIGNATURE)
 
 void SmartLib::sendToMQTT(const char *topic, const char *fmt, ...)
 {
+    char _topic[128];
     if (snprintf(_topic, sizeof(_topic), "%s/TX/%s", _deviceName, topic) >= sizeof(_topic))
     {
-        ESP_LOGE("SNPRINTG", "TOO LONG");
+        ESP_LOGE("SNPRINTF", "_topic too long");
         return;
     }
 
@@ -123,20 +129,29 @@ void SmartLib::sendToMQTT(const char *topic, const char *fmt, ...)
 
     va_list args;
     va_start(args, fmt);
-    vsnprintf(payload, sizeof(payload), fmt, args);
-    va_end(args);
-
-    client.publish(_topic, payload);
-}
-void SmartLib::sendToMQTTStr(const char *topic, const char *payload)
-{
-    if (snprintf(_topic, sizeof(_topic), "%s/TX/%s", _deviceName, topic) >= sizeof(_topic))
+    if (vsnprintf(payload, sizeof(payload), fmt, args) >= sizeof(payload))
     {
-        ESP_LOGE("SNPRINTG", "TOO LONG");
+        va_end(args);
+        ESP_LOGE("VSNPRINTF", "payload too long");
         return;
     }
 
+    setAct(true);
     client.publish(_topic, payload);
+    setAct(false);
+}
+void SmartLib::sendToMQTTStr(const char *topic, const char *payload)
+{
+    char _topic[128];
+    if (snprintf(_topic, sizeof(_topic), "%s/TX/%s", _deviceName, topic) >= sizeof(_topic))
+    {
+        ESP_LOGE("SNPRINTF", "_topic too long");
+        return;
+    }
+    
+    setAct(true);
+    client.publish(_topic, payload);
+    setAct(false);
 }
 
 void SmartLib::loop()
@@ -147,9 +162,10 @@ void SmartLib::loop()
 
 char *SmartLib::getRxTopic(const char *topic)
 {
+    char _topic[128];
     if (snprintf(_topic, sizeof(_topic), "%s/RX/%s", _deviceName, topic) >= sizeof(_topic))
     {
-        ESP_LOGE("SNPRINTG", "TOO LONG");
+        ESP_LOGE("SNPRINTF", "_topic too long");
         return nullptr;
     }
 
