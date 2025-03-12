@@ -45,8 +45,14 @@ void SmartLib::maintainConnection()
                 WiFi.disconnect(true, false);
                 ESP_LOGD("WiFi", "Disconnected");
                 _reconnectionTries++;
+
                 if (_reconnectionTries >= 2)
+                #if defined(ESP8266)
+                    ESP.restart();
+                #else
                     esp_deep_sleep(1000000);
+                #endif
+                
                 delay(1000);
                 maintainConnection();
                 return;
