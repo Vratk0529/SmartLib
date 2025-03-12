@@ -75,7 +75,6 @@ void SmartLib::maintainConnection()
         }
         if (client.connected())
         {
-            char _topic[128];
             ESP_LOGD("MQTT", "Connected");
             if (snprintf(_topic, sizeof(_topic), "%s/RX/#", _deviceName) >= sizeof(_topic))
             {
@@ -84,6 +83,7 @@ void SmartLib::maintainConnection()
                 return;
             }
 
+            ESP_LOGD("MQTT", "Subscribed to: %s", _topic);
             client.subscribe(_topic);
         }
         setAct(false);
@@ -118,7 +118,6 @@ void SmartLib::setMQTTCallback(MQTT_CALLBACK_SIGNATURE)
 
 void SmartLib::sendToMQTT(const char *topic, const char *fmt, ...)
 {
-    char _topic[128];
     if (snprintf(_topic, sizeof(_topic), "%s/TX/%s", _deviceName, topic) >= sizeof(_topic))
     {
         ESP_LOGE("SNPRINTF", "_topic too long");
@@ -142,7 +141,6 @@ void SmartLib::sendToMQTT(const char *topic, const char *fmt, ...)
 }
 void SmartLib::sendToMQTTStr(const char *topic, const char *payload)
 {
-    char _topic[128];
     if (snprintf(_topic, sizeof(_topic), "%s/TX/%s", _deviceName, topic) >= sizeof(_topic))
     {
         ESP_LOGE("SNPRINTF", "_topic too long");
@@ -162,7 +160,6 @@ void SmartLib::loop()
 
 char *SmartLib::getRxTopic(const char *topic)
 {
-    char _topic[128];
     if (snprintf(_topic, sizeof(_topic), "%s/RX/%s", _deviceName, topic) >= sizeof(_topic))
     {
         ESP_LOGE("SNPRINTF", "_topic too long");
