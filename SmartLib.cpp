@@ -1,6 +1,6 @@
 #include "SmartLib.h"
 
-#include "esp_log.h"
+#include "esp_log_compat.h"
 
 #include <stdarg.h>
 
