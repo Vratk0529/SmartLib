@@ -4,12 +4,14 @@
 
 #include <stdarg.h>
 
-WiFiClient SmartLib::_mqttClient;
+WiFiClient SmartLib::_wifiClient;
+EthernetClient SmartLib::_ethClient;
 
 SmartLib::SmartLib(const char *deviceName, const char *SSID, const char *PASS, const char *MQTT_SRV,
                    const char *MQTT_NAME, const char *MQTT_PASS, int8_t ACT_LED, bool ACT_HIGH)
-    : client(_mqttClient)
+    : client(_wifiClient)
 {
+    ethOrWiFi = true; // WiFi
     setStringSafe(_deviceName, sizeof(_deviceName), deviceName);
     setStringSafe(_SSID, sizeof(_SSID), SSID);
     setStringSafe(_PASS, sizeof(_PASS), PASS);
@@ -27,40 +29,102 @@ SmartLib::SmartLib(const char *deviceName, const char *SSID, const char *PASS, c
     client.setServer(MQTT_SRV, 1883);
 }
 
+SmartLib::SmartLib(const char *deviceName, uint8_t macAddress[6], int8_t ETH_CS, int8_t ETH_RST, const char *MQTT_SRV,
+                   const char *MQTT_NAME, const char *MQTT_PASS, int8_t ACT_LED, bool ACT_HIGH)
+    : client(_ethClient)
+{
+    ethOrWiFi = false; // Ethernet
+    setStringSafe(_deviceName, sizeof(_deviceName), deviceName);
+    memcpy(_macAddress, macAddress, sizeof(_macAddress));
+    setStringSafe(_MQTT_NAME, sizeof(_MQTT_NAME), MQTT_NAME);
+    setStringSafe(_MQTT_PASS, sizeof(_MQTT_PASS), MQTT_PASS);
+
+    if (ACT_LED != -1)
+    {
+        pinMode(ACT_LED, OUTPUT);
+        digitalWrite(ACT_LED, !ACT_HIGH);
+        _ACT_LED = ACT_LED;
+        _ACT_HIGH = ACT_HIGH;
+    }
+
+    _ETH_CS = ETH_CS;
+    _ETH_RST = ETH_RST;
+
+    client.setServer(MQTT_SRV, 1883);
+}
+
+void SmartLib::begin()
+{
+    if (ethOrWiFi)
+    {
+        WiFi.begin(_SSID, _PASS);
+    }
+    else
+    {
+        if (_ETH_RST != -1)
+        {
+            pinMode(_ETH_RST, OUTPUT);
+            digitalWrite(_ETH_RST, LOW);
+            delay(25);
+            digitalWrite(_ETH_RST, HIGH);
+            delay(25);
+        }
+        Ethernet.init(_ETH_CS);
+        Ethernet.begin(_macAddress);
+        if (Ethernet.hardwareStatus() == EthernetNoHardware)
+        {
+            ESP_LOGE("Ethernet", "No Ethernet hardware found");
+            return;
+        }
+    }
+}
+
 void SmartLib::maintainConnection()
 {
-    if (WiFi.status() != WL_CONNECTED)
+    if (ethOrWiFi)
     {
-        setAct(false);
-        WiFi.begin(_SSID, _PASS);
-        uint8_t reconnectionTries = 0;
-        while (!WiFi.isConnected())
+        if (WiFi.status() != WL_CONNECTED)
         {
-            ESP_LOGD("WiFi", "Connecting");
-            toggleAct();
-            delay(500);
-            reconnectionTries++;
-            if (reconnectionTries >= 20)
+            setAct(false);
+            WiFi.begin(_SSID, _PASS);
+            uint8_t reconnectionTries = 0;
+            while (!WiFi.isConnected())
             {
-                WiFi.disconnect(true, false);
-                ESP_LOGD("WiFi", "Disconnected");
-                _reconnectionTries++;
+                ESP_LOGD("WiFi", "Connecting");
+                toggleAct();
+                delay(500);
+                reconnectionTries++;
+                if (reconnectionTries >= 20)
+                {
+                    WiFi.disconnect(true, false);
+                    ESP_LOGD("WiFi", "Disconnected");
+                    _reconnectionTries++;
 
-                if (_reconnectionTries >= 2)
-                #if defined(ESP8266)
-                    ESP.restart();
-                #else
-                    esp_deep_sleep(1000000);
-                #endif
-                
-                delay(1000);
-                maintainConnection();
-                return;
+                    if (_reconnectionTries >= 2)
+#if defined(ESP8266)
+                        ESP.restart();
+#else
+                        esp_deep_sleep(1000000);
+#endif
+
+                    delay(1000);
+                    maintainConnection();
+                    return;
+                }
             }
+            setAct(false);
+            ESP_LOGD("WiFi", "Connected");
+            _reconnectionTries = 0;
         }
-        setAct(false);
-        ESP_LOGD("WiFi", "Connected");
-        _reconnectionTries = 0;
+    }
+    else
+    {
+        Ethernet.maintain();
+        if (Ethernet.linkStatus() == LinkOFF)
+        {
+            ESP_LOGW("Ethernet", "Ethernet link is down");
+            return;
+        }
     }
     if (!client.connected())
     {
@@ -152,7 +216,7 @@ void SmartLib::sendToMQTTStr(const char *topic, const char *payload)
         ESP_LOGE("SNPRINTF", "_topic too long");
         return;
     }
-    
+
     setAct(true);
     client.publish(_topic, payload);
     setAct(false);
