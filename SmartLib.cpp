@@ -143,10 +143,6 @@ void SmartLib::maintainConnection()
         client_id += String(WiFi.macAddress());
 #else
         String client_id = "eth-client-";
-        client_id += String(_macAddress[0], HEX);
-        client_id += String(_macAddress[1], HEX);
-        client_id += String(_macAddress[2], HEX);
-        client_id += String(_macAddress[3], HEX);
         client_id += String(_macAddress[4], HEX);
         client_id += String(_macAddress[5], HEX);
 #endif
