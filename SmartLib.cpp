@@ -4,9 +4,13 @@
 
 #include <stdarg.h>
 
+#ifndef WIFI_NONE
 WiFiClient SmartLib::_wifiClient;
+#endif
+
 EthernetClient SmartLib::_ethClient;
 
+#ifndef WIFI_NONE
 SmartLib::SmartLib(const char *deviceName, const char *SSID, const char *PASS, const char *MQTT_SRV,
                    const char *MQTT_NAME, const char *MQTT_PASS, int8_t ACT_LED, bool ACT_HIGH)
     : client(_wifiClient)
@@ -28,6 +32,7 @@ SmartLib::SmartLib(const char *deviceName, const char *SSID, const char *PASS, c
 
     client.setServer(MQTT_SRV, 1883);
 }
+#endif
 
 SmartLib::SmartLib(const char *deviceName, uint8_t macAddress[6], int8_t ETH_CS, int8_t ETH_RST, const char *MQTT_SRV,
                    const char *MQTT_NAME, const char *MQTT_PASS, int8_t ACT_LED, bool ACT_HIGH)
@@ -55,11 +60,13 @@ SmartLib::SmartLib(const char *deviceName, uint8_t macAddress[6], int8_t ETH_CS,
 
 void SmartLib::begin()
 {
+#ifndef WIFI_NONE
     if (ethOrWiFi)
     {
         WiFi.begin(_SSID, _PASS);
     }
     else
+#endif
     {
         if (_ETH_RST != -1)
         {
@@ -81,6 +88,7 @@ void SmartLib::begin()
 
 void SmartLib::maintainConnection()
 {
+#ifndef WIFI_NONE
     if (ethOrWiFi)
     {
         if (WiFi.status() != WL_CONNECTED)
@@ -118,6 +126,7 @@ void SmartLib::maintainConnection()
         }
     }
     else
+#endif
     {
         Ethernet.maintain();
         if (Ethernet.linkStatus() == LinkOFF)
@@ -129,8 +138,18 @@ void SmartLib::maintainConnection()
     if (!client.connected())
     {
         setAct(true);
+#ifndef WIFI_NONE
         String client_id = "esp32-client-";
         client_id += String(WiFi.macAddress());
+#else
+        String client_id = "eth-client-";
+        client_id += String(_macAddress[0], HEX);
+        client_id += String(_macAddress[1], HEX);
+        client_id += String(_macAddress[2], HEX);
+        client_id += String(_macAddress[3], HEX);
+        client_id += String(_macAddress[4], HEX);
+        client_id += String(_macAddress[5], HEX);
+#endif
         ESP_LOGD("MQTT", "Connecting");
 
         if (!client.connect(client_id.c_str(), _MQTT_NAME, _MQTT_PASS))
@@ -161,7 +180,16 @@ void SmartLib::maintainConnection()
 }
 bool SmartLib::getStatus()
 {
-    return WiFi.isConnected() && client.connected();
+#ifndef WIFI_NONE
+    if (ethOrWiFi)
+    {
+        return WiFi.isConnected() && client.connected();
+    }
+    else
+#endif
+    {
+        return Ethernet.linkStatus() == LinkON && client.connected();
+    }
 }
 
 void SmartLib::setAct(bool state)
