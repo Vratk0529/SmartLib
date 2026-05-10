@@ -8,7 +8,7 @@
 
 #if defined(PLATFORM_ARCH_ESP8266)
 #include <ESP8266WiFi.h>
-#elif defined(PLATFORM_ARCH_ESP32)
+#elif defined(ESP32)
 #include <WiFi.h>
 #else
 #define WIFI_NONE
