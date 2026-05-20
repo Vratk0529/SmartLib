@@ -1,7 +1,7 @@
 #ifndef ESP_LOG_COMPAT_H
 #define ESP_LOG_COMPAT_H
 
-#ifndef PLATFORM_ARCH_ESP32
+#ifndef ESP32
 
 #define ESP_LOGE(tag, format, ...) Serial.printf("[E] %s: " format "\n", tag, ##__VA_ARGS__)
 #define ESP_LOGW(tag, format, ...) Serial.printf("[W] %s: " format "\n", tag, ##__VA_ARGS__)
