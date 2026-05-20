@@ -6,7 +6,7 @@
 #include <Ethernet.h>
 #include <PubSubClient.h>
 
-#if defined(PLATFORM_ARCH_ESP8266)
+#if defined(ESP8266)
 #include <ESP8266WiFi.h>
 #elif defined(ESP32)
 #include <WiFi.h>
