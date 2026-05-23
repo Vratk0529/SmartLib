@@ -152,12 +152,12 @@ void SmartLib::maintainConnection()
         if (!client.connect(client_id.c_str(), _MQTT_NAME, _MQTT_PASS))
         {
             ESP_LOGW("MQTT", "Connection failed: %d", client.state());
-            delay(500);
+            delay(50);
         }
         if (client.state() == -4)
         {
             ESP_LOGW("MQTT", "Bad username or password");
-            delay(30000);
+            delay(500);
         }
         if (client.connected())
         {
@@ -250,10 +250,10 @@ void SmartLib::sendToMQTTStr(const char *topic, const char *payload)
 
 void SmartLib::loop()
 {
-    client.loop();
     maintainConnection();
+    client.loop();
 
-    #if defined(ESP8266) || defined(ESP32)
+#if defined(ESP8266) || defined(ESP32)
     if (ethOrWiFi && WiFi.isConnected())
     {
         int32_t rssi = WiFi.RSSI();
