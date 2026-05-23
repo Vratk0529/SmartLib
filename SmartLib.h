@@ -62,6 +62,7 @@ private:
      bool _ACT_HIGH;
      char _topic[128];
      uint8_t _reconnectionTries = 0;
+     uint32_t _lastWeakWiFiLog = 0;
 
      uint8_t _macAddress[6] = {0};
      bool ethOrWiFi = true; // false if Ethernet, true if WiFi

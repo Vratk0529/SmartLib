@@ -252,6 +252,25 @@ void SmartLib::loop()
 {
     client.loop();
     maintainConnection();
+
+    #if defined(ESP8266) || defined(ESP32)
+    if (ethOrWiFi && WiFi.isConnected())
+    {
+        int32_t rssi = WiFi.RSSI();
+
+        // weaker than about usable/stable range
+        if (rssi < -75)
+        {
+            uint32_t now = millis();
+
+            if (now - _lastWeakWiFiLog >= 5000)
+            {
+                ESP_LOGD("WiFi", "Weak signal detected: %d dBm", rssi);
+                _lastWeakWiFiLog = now;
+            }
+        }
+    }
+#endif
 }
 
 char *SmartLib::getRxTopic(const char *topic)
