@@ -32,7 +32,7 @@ public:
      void setAct(bool state);
      void toggleAct();
 
-     void setMQTTCallback(MQTT_CALLBACK_SIGNATURE);
+     void setMQTTCallback(void (*mqttCallback)(char *, uint8_t *, unsigned int));
 
      void sendToMQTTStr(const char *topic, const char *payload);
      void sendToMQTT(const char *topic, const char *fmt, ...);
@@ -43,6 +43,10 @@ public:
 
 private:
      void setStringSafe(char *var, size_t size, const char *to);
+
+     static void mqttCallback(char *topic, uint8_t *payload, unsigned int length);
+     static void (*_mqttCallback)(char *topic, uint8_t *payload, unsigned int length);
+
 #ifndef WIFI_NONE
      static WiFiClient _wifiClient;
 #endif
