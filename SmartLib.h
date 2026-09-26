@@ -8,10 +8,21 @@
 
 #if defined(ESP8266)
 #include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
 #elif defined(ESP32)
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #else
 #define WIFI_NONE
+#endif
+
+// OTA updates and NTP time need the ESP cores (Update, lwIP SNTP, settimeofday).
+#if defined(ESP32) || defined(ESP8266)
+#define SMARTLIB_ESP
+#endif
+
+#ifndef ETHERNET_FORK_VRATK0529
+#warning "SmartLib: upstream Ethernet library found, use https://github.com/Vratk0529/Ethernet (hangs on cable pull, no DHCP hostname/NTP)"
 #endif
 
 // Topic layout used throughout:
@@ -20,6 +31,31 @@
 
 #ifndef SMARTLIB_MAX_HANDLERS
 #define SMARTLIB_MAX_HANDLERS 16
+#endif
+
+// POSIX TZ string for local time; time(nullptr) is UTC regardless.
+#ifndef SMARTLIB_DEFAULT_TZ
+#define SMARTLIB_DEFAULT_TZ "CET-1CEST,M3.5.0,M10.5.0/3" // Europe/Prague
+#endif
+
+// Used when DHCP does not offer an NTP server (option 42).
+#ifndef SMARTLIB_DEFAULT_NTP
+#define SMARTLIB_DEFAULT_NTP "pool.ntp.org"
+#endif
+
+// espota's default port for the platform, so `upload_protocol = espota`
+// works without --port.
+#ifndef SMARTLIB_OTA_PORT
+#if defined(ESP8266)
+#define SMARTLIB_OTA_PORT 8266
+#else
+#define SMARTLIB_OTA_PORT 3232
+#endif
+#endif
+
+// tools/smartscan.py finds devices by asking this port.
+#ifndef SMARTLIB_DISCOVERY_PORT
+#define SMARTLIB_DISCOVERY_PORT 3234
 #endif
 
 // Handler for a routed message. topic is the full MQTT topic as delivered.
@@ -91,6 +127,59 @@ public:
                           const char *offlinePayload = "offline");
      void disableAvailability();
 
+     // ---- identity ----------------------------------------------------
+     // Network name: DHCP hostname (router lease list), mDNS "<name>.local"
+     // and the MQTT client id. Defaults to the device name with anything
+     // but letters, digits and '-' dropped. Call before begin().
+     void setHostname(const char *hostname);
+     const char *hostname() const { return _hostname; }
+
+     // Shown in the Info topic. Not copied: pass a literal or a global.
+     void setFirmwareVersion(const char *version) { _fwVersion = version; }
+
+     // Retained "<device>/TX/Info": hostname, IP, MAC, chip, firmware
+     // version and MD5, reset reason, NTP server. Sent on every connect.
+     void publishInfo(const char *subTopic = "Info");
+
+     // Blink the activity LED to find the device physically. Also on
+     // MQTT: "<device>/RX/Identify" with the seconds as payload (empty
+     // = 10, "0"/"off" = stop).
+     void identify(uint16_t seconds = 10);
+
+     // Answer tools/smartscan.py (UDP SMARTLIB_DISCOVERY_PORT) with the
+     // Info JSON plus uptime/RSSI/MQTT state. On by default.
+     void disableDiscovery() { _discoveryEnabled = false; }
+
+#ifdef SMARTLIB_ESP
+     // ---- OTA ---------------------------------------------------------
+     // On by default, and it needs a password: set one here or with
+     // -DSMARTLIB_OTA_PASSWORD=\"...\", otherwise OTA stays off. Upload
+     // with `upload_protocol = espota`, `upload_port = <hostname>.local`
+     // (or the IP on Ethernet), `upload_flags = --auth=<password>`.
+     void setOTAPassword(const char *password);
+     // Testing only: accept updates from anyone on the network.
+     void allowOTAWithoutPassword() { _otaNoPassword = true; }
+     void disableOTA() { _otaEnabled = false; }
+     // Runs right before an update starts writing flash (relays off,
+     // stop tasks...). The MQTT session is closed after it.
+     void setOTAStartCallback(void (*callback)(void)) { _otaStartCallback = callback; }
+     bool otaActive() const { return _otaActive; }
+
+     // ---- time --------------------------------------------------------
+     // NTP starts once the network is up, from the server DHCP offers or
+     // else SMARTLIB_DEFAULT_NTP. Call these before begin().
+     void setTimezone(const char *posixTz);
+     void setNTPServer(const char *server);
+     void disableNTP() { _ntpEnabled = false; }
+
+     // Wall clock is set (NTP or kept across a soft reset).
+     static bool timeValid();
+     // Local time with strftime(); false (and "") until timeValid().
+     static bool timeString(char *buf, size_t size, const char *fmt = "%Y-%m-%dT%H:%M:%S%z");
+     // Server in use: DHCP-provided IP or the fallback name.
+     const char *ntpServer();
+#endif
+
      // ---- helpers ---------------------------------------------------
      char *getRxTopic(const char *topic);
 
@@ -117,6 +206,12 @@ private:
                      bool ACT_HIGH);
      void onConnected();
      void dispatch(char *topic, uint8_t *payload, unsigned int length);
+     void macAddress(uint8_t mac[6]) const;
+     bool networkUp();
+     void startNetworkServices();
+     void serviceIdentify();
+     void serviceDiscovery();
+     size_t infoJson(char *buf, size_t size, bool live);
 
      static void mqttCallback(char *topic, uint8_t *payload, unsigned int length);
      static void (*_mqttCallback)(char *topic, uint8_t *payload, unsigned int length);
@@ -138,18 +233,24 @@ private:
      uint8_t _handlerCount = 0;
      void (*_connectedCallback)(void) = nullptr;
 
-     bool actStatus;
+     bool actStatus = false;
      char _SSID[64], _PASS[64], _MQTT_NAME[64], _MQTT_PASS[64];
      char _deviceName[64];
+     char _hostname[33] = {0};
+     const char *_fwVersion = nullptr;
      int8_t _ACT_LED = -1;
      int8_t _ETH_CS = -1;
      int8_t _ETH_RST = -1;
-     bool _ACT_HIGH;
+     bool _ACT_HIGH = true;
      char _topic[128];
      uint8_t _reconnectionTries = 0;
      uint32_t _lastWeakWiFiLog = 0;
      uint32_t _lastMqttAttempt = 0;
      uint32_t _lastDhcpAttempt = 0;
+
+     uint32_t _identifyStart = 0;
+     uint32_t _identifyLength = 0;
+     uint32_t _identifyLastToggle = 0;
 
      bool _availEnabled = true;
      char _availTopic[128] = {0};
@@ -158,6 +259,57 @@ private:
 
      uint8_t _macAddress[6] = {0};
      bool ethOrWiFi = true; // false if Ethernet, true if WiFi
+
+     bool _netServicesStarted = false;
+     bool _discoveryEnabled = true;
+     UDP *_discovery = nullptr;
+#ifndef WIFI_NONE
+     WiFiUDP _wifiDiscoveryUdp;
+#endif
+     EthernetUDP _ethDiscoveryUdp;
+
+#ifdef SMARTLIB_ESP
+     void startOTA();
+     void otaStarting();
+     void startTime();
+     void serviceTime();
+
+     bool _otaEnabled = true;
+     bool _otaNoPassword = false;
+     bool _otaRunning = false;
+     bool _otaActive = false;
+     char _otaPassword[64] = {0};
+     void (*_otaStartCallback)(void) = nullptr;
+
+     // Ethernet has no lwIP, so neither ArduinoOTA nor SNTP work there:
+     // SmartLib speaks espota and NTP itself over the W5x00 sockets.
+     void ethOtaHandle();
+     void ethOtaRun(IPAddress host, uint16_t port, uint32_t size, int command, const char *md5);
+     EthernetUDP _ethOtaUdp;
+     enum : uint8_t { ETH_OTA_IDLE, ETH_OTA_WAITAUTH } _ethOtaState = ETH_OTA_IDLE;
+     char _ethOtaNonce[33] = {0};
+     char _ethOtaMd5[33] = {0};
+     uint32_t _ethOtaSize = 0;
+     uint16_t _ethOtaPort = 0;
+     int _ethOtaCommand = 0;
+     uint32_t _ethOtaAuthStart = 0;
+
+     void ethNtpSend();
+     void ethNtpReceive();
+     EthernetUDP _ethNtpUdp;
+     bool _ethNtpWaiting = false;
+     bool _ethNtpSynced = false;
+     uint32_t _ethNtpSentAt = 0;
+     uint32_t _ethNtpLastAttempt = 0;
+     uint8_t _ethNtpFailures = 0;
+
+     bool _ntpEnabled = true;
+     bool _ntpConfigured = false;
+     char _tz[64] = SMARTLIB_DEFAULT_TZ;
+     char _ntpFallback[64] = SMARTLIB_DEFAULT_NTP;
+     char _ntpDhcp[16] = {0};
+     const char *_ntpActive = "";
+#endif
 };
 
 #endif
