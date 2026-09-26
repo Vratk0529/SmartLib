@@ -3,18 +3,25 @@
 
 #include <Arduino.h>
 #include <SPI.h>
-#include <Ethernet.h>
-#include <PubSubClient.h>
 
 #if defined(ESP8266)
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
+// The ESP8266 WiFi headers define these too (4 and 8192). Ethernet.h must
+// see only its own values, the ones the Ethernet library is compiled with:
+// its inline constructors mark a free socket with MAX_SOCK_NUM, and a 4
+// where the library expects 8 reads as "socket 4 in use".
+#undef MAX_SOCK_NUM
+#undef UDP_TX_PACKET_MAX_SIZE
 #elif defined(ESP32)
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #else
 #define WIFI_NONE
 #endif
+
+#include <Ethernet.h>
+#include <PubSubClient.h>
 
 // OTA updates and NTP time need the ESP cores (Update, lwIP SNTP, settimeofday).
 #if defined(ESP32) || defined(ESP8266)
